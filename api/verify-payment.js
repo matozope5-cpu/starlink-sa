@@ -2,7 +2,7 @@
 export default async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     // Handle preflight requests
@@ -10,16 +10,29 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
-    // Only allow POST requests
-    if (req.method !== 'POST') {
-        return res.status(405).json({ 
-            success: false, 
-            error: 'Method not allowed' 
-        });
-    }
-
     try {
-        const { reference, bundle, recipientPhone } = req.body;
+        // Handle both GET (from callback) and POST (from frontend)
+        let reference;
+        let bundleInfo = null;
+
+        if (req.method === 'GET') {
+            reference = req.query.reference;
+            // Get bundle info from query params if available
+            bundleInfo = {
+                title: req.query.bundle,
+                phone: req.query.phone,
+                amountZAR: req.query.amount,
+                amountUSD: req.query.usd
+            };
+        } else if (req.method === 'POST') {
+            reference = req.body.reference;
+            bundleInfo = req.body.bundleInfo;
+        } else {
+            return res.status(405).json({ 
+                success: false, 
+                error: 'Method not allowed' 
+            });
+        }
 
         if (!reference) {
             return res.status(400).json({
@@ -28,8 +41,16 @@ export default async function handler(req, res) {
             });
         }
 
-        // 🔐 SECRET KEY - NEVER expose this to frontend
-        const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY; // Set this in your environment variables
+        // 🔐 SECRET KEY - Set this in your environment variables
+        const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+
+        if (!paystackSecretKey) {
+            console.error('PAYSTACK_SECRET_KEY is not set');
+            return res.status(500).json({
+                success: false,
+                error: 'Server configuration error'
+            });
+        }
 
         // Verify transaction with Paystack using SECRET KEY
         const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
@@ -42,42 +63,48 @@ export default async function handler(req, res) {
 
         const data = await response.json();
 
-        if (!response.ok || !data.status) {
-            throw new Error(data.message || 'Verification failed');
+        if (!response.ok) {
+            console.error('Paystack verification error:', data);
+            return res.status(response.status).json({
+                success: false,
+                error: data.message || 'Verification failed'
+            });
         }
 
         // Check if payment was successful
-        if (data.data.status === 'success') {
+        if (data.data && data.data.status === 'success') {
             // ✅ Payment is confirmed!
             
-            // Here you would:
-            // 1. Save transaction to your database
-            // 2. Trigger data bundle delivery (call your telecom provider's API)
-            // 3. Send confirmation SMS/email to customer
+            // Get metadata from the transaction
+            const metadata = data.data.metadata || {};
             
-            console.log('Payment verified:', {
+            const paymentDetails = {
                 reference: data.data.reference,
-                amount: data.data.amount / 100, // Convert from cents
+                amount: data.data.amount / 100,
                 currency: data.data.currency,
-                bundle: bundle,
-                phone: recipientPhone
-            });
+                paid_at: data.data.paid_at,
+                bundle_name: metadata.bundle_name || (bundleInfo ? bundleInfo.title : 'Unknown'),
+                recipient_phone: metadata.recipient_phone || (bundleInfo ? bundleInfo.phone : 'Unknown'),
+                amount_zar: metadata.amount_zar || (bundleInfo ? bundleInfo.amountZAR : 'Unknown'),
+                amount_usd: metadata.amount_usd || (bundleInfo ? bundleInfo.amountUSD : data.data.amount / 100),
+                customer_email: metadata.customer_email || data.data.customer.email
+            };
+            
+            console.log('Payment verified:', paymentDetails);
+            
+            // Here you would trigger data bundle delivery
+            // await deliverDataBundle(paymentDetails.recipient_phone, paymentDetails.bundle_name);
             
             return res.status(200).json({
                 success: true,
                 message: 'Payment verified successfully',
-                data: {
-                    reference: data.data.reference,
-                    amount: data.data.amount / 100,
-                    currency: data.data.currency,
-                    paid_at: data.data.paid_at
-                }
+                data: paymentDetails
             });
         } else {
             return res.status(200).json({
                 success: false,
                 error: 'Payment not successful',
-                status: data.data.status
+                status: data.data ? data.data.status : 'unknown'
             });
         }
 
