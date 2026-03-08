@@ -606,10 +606,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.3/dist/sweetalert2.all.min.js"></script>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
 
     <script>
-    // API endpoint - update this to your actual backend URL
-    const API_BASE_URL = 'https://yourdomain.com/api'; // Change this to your actual domain
+    // Paystack configuration - PUBLIC KEY (safe to expose)
+    const paystackPublicKey = 'pk_test_50f796e5105a79f318cf2e6edbf73da1d7ce8608'; // Your public key
+    
+    // Backend API URL (for verification only)
+    const API_BASE_URL = 'http://localhost:3000/api'; // Change to your actual domain
     // For local development: 'http://localhost:3000/api'
 
     // Exchange rate (approximate: 1 USD = 18 ZAR)
@@ -973,68 +977,133 @@
         showInputModal(bundle);
     }
 
-    // NEW: Function to initialize payment via backend
+    // UPDATED: Main payment function - USES PUBLIC KEY to open modal
     async function initiatePayment(bundle, recipientPhone, customerEmail) {
         if (isProcessing) return;
         isProcessing = true;
         
         try {
-            showLoading('Initializing payment...');
+            showLoading('Preparing payment...');
             
             const formattedPhone = recipientPhone;
             
-            // Call your backend API to initialize Paystack payment
-            const response = await fetch(`${API_BASE_URL}/stack.js`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: customerEmail,
-                    amountUSD: bundle.priceUSD,
-                    bundleTitle: bundle.title,
-                    recipientPhone: formattedPhone,
-                    amountZAR: bundle.priceZAR,
-                    customerName: 'Starlink Customer'
-                })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to initialize payment');
-            }
-
+            // Close the SweetAlert modal
+            Swal.close();
+            
+            // Small delay to ensure modal is closed
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Hide loading before Paystack opens
             hideLoading();
-
-            // Redirect to Paystack payment page
-            window.location.href = data.authorization_url;
-
-            // Note: The user will be redirected away from your site
-            // They will come back to your callback URL after payment
+            
+            // Generate unique reference
+            const reference = 'STARLINK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+            
+            // Save bundle info for later use
+            sessionStorage.setItem('pendingBundle', JSON.stringify({
+                title: bundle.title,
+                priceZAR: bundle.priceZAR,
+                priceUSD: bundle.priceUSD,
+                phone: formattedPhone,
+                email: customerEmail
+            }));
+            
+            // OPEN PAYSTACK MODAL WITH PUBLIC KEY (NO REDIRECT)
+            const handler = PaystackPop.setup({
+                key: paystackPublicKey, // 🔑 PUBLIC KEY HERE - safe to expose
+                email: customerEmail,
+                amount: bundle.priceUSD * 100, // Convert to cents
+                currency: 'USD',
+                ref: reference,
+                metadata: {
+                    bundle_name: bundle.title,
+                    recipient_phone: formattedPhone,
+                    amount_zar: bundle.priceZAR,
+                    customer_email: customerEmail
+                },
+                callback: async function(response) {
+                    // This runs when payment is successful
+                    showLoading('Verifying payment...');
+                    
+                    try {
+                        // Call your backend to VERIFY with SECRET KEY
+                        const verifyResponse = await fetch(`${API_BASE_URL}/verify-payment`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                reference: response.reference,
+                                bundle: bundle,
+                                recipientPhone: formattedPhone
+                            })
+                        });
+                        
+                        const verifyData = await verifyResponse.json();
+                        
+                        hideLoading();
+                        
+                        if (verifyData.success) {
+                            // Get the saved bundle info
+                            const pendingBundle = JSON.parse(sessionStorage.getItem('pendingBundle') || '{}');
+                            
+                            // Show success modal
+                            await Swal.fire({
+                                title: 'Payment Successful!',
+                                html: `
+                                    <div class="status-modal-content">
+                                        <div class="status-icon" style="color:#1d541d;">
+                                            <i class="fas fa-check-circle"></i>
+                                        </div>
+                                        <div class="status-details">
+                                            <div style="margin-bottom:0.3rem;"><strong>${bundle.title}</strong></div>
+                                            <div>Recipient: ${formattedPhone}</div>
+                                            <div style="font-weight:700;margin-top:0.3rem;">R ${bundle.priceZAR} ($${bundle.priceUSD})</div>
+                                            <div style="font-size:0.6rem;margin-top:0.3rem;color:#2d7a2d;">
+                                                Ref: ${response.reference}
+                                            </div>
+                                        </div>
+                                        <p style="font-size:0.75rem;">Data will be sent to ${formattedPhone} shortly</p>
+                                    </div>
+                                `,
+                                confirmButtonText: 'Done',
+                                confirmButtonColor: '#1d541d',
+                                customClass: {
+                                    confirmButton: 'swal2-confirm'
+                                }
+                            });
+                            
+                            // Clear pending bundle
+                            sessionStorage.removeItem('pendingBundle');
+                        } else {
+                            throw new Error(verifyData.error || 'Verification failed');
+                        }
+                    } catch (error) {
+                        hideLoading();
+                        await showPaymentStatus('Verification Error', error.message || 'Payment completed but verification failed', 'warning');
+                    } finally {
+                        isProcessing = false;
+                        selectedBundle = null;
+                    }
+                },
+                onClose: function() {
+                    // User closed the payment window
+                    showPaymentStatus('Payment Cancelled', 'You closed the payment window', 'warning');
+                    isProcessing = false;
+                    selectedBundle = null;
+                    sessionStorage.removeItem('pendingBundle');
+                }
+            });
+            
+            // Open the Paystack modal
+            handler.openIframe();
             
         } catch (error) {
             hideLoading();
             await showPaymentStatus('Error', error.message || 'Something went wrong', 'error');
             isProcessing = false;
             selectedBundle = null;
-        }
-    }
-
-    // Function to check payment status (call this on your callback page)
-    async function verifyPayment(reference) {
-        try {
-            const response = await fetch(`${API_BASE_URL}/verify-payment.js?reference=${reference}`);
-            const data = await response.json();
-            
-            if (data.success && data.status === 'success') {
-                // Payment successful
-                return { success: true, data: data };
-            } else {
-                return { success: false, error: 'Payment failed' };
-            }
-        } catch (error) {
-            return { success: false, error: error.message };
+            sessionStorage.removeItem('pendingBundle');
         }
     }
 
@@ -1063,71 +1132,8 @@
         });
     }
 
-    // Check if this is a callback page with payment reference
-    function checkPaymentCallback() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const reference = urlParams.get('reference');
-        const trxref = urlParams.get('trxref');
-        
-        const paymentRef = reference || trxref;
-        
-        if (paymentRef) {
-            // Show loading while verifying
-            showLoading('Verifying payment...');
-            
-            // Verify payment
-            verifyPayment(paymentRef).then(result => {
-                hideLoading();
-                
-                if (result.success) {
-                    // Get bundle details from localStorage or session
-                    const bundleInfo = sessionStorage.getItem('lastBundle');
-                    if (bundleInfo) {
-                        const bundle = JSON.parse(bundleInfo);
-                        showPaymentSuccess(bundle, paymentRef);
-                        sessionStorage.removeItem('lastBundle');
-                    } else {
-                        showPaymentStatus('Payment Successful', 'Your payment was completed successfully!', 'success');
-                    }
-                } else {
-                    showPaymentStatus('Payment Failed', result.error || 'Payment verification failed', 'error');
-                }
-            });
-        }
-    }
-
-    function showPaymentSuccess(bundle, reference) {
-        Swal.fire({
-            title: 'Payment Successful!',
-            html: `
-                <div class="status-modal-content">
-                    <div class="status-icon" style="color:#1d541d;">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="status-details">
-                        <div style="margin-bottom:0.3rem;"><strong>${bundle.title}</strong></div>
-                        <div>Recipient: ${bundle.phone}</div>
-                        <div style="font-weight:700;margin-top:0.3rem;">R ${bundle.priceZAR} ($${bundle.priceUSD})</div>
-                        <div style="font-size:0.6rem;margin-top:0.3rem;color:#2d7a2d;">
-                            Ref: ${reference}
-                        </div>
-                    </div>
-                    <p style="font-size:0.75rem;">Data will be sent to ${bundle.phone} shortly</p>
-                </div>
-            `,
-            confirmButtonText: 'Done',
-            confirmButtonColor: '#1d541d',
-            customClass: {
-                confirmButton: 'swal2-confirm'
-            }
-        });
-    }
-
     // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
-        initPage();
-        checkPaymentCallback();
-    });
+    document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>

@@ -37,7 +37,7 @@ export default async function handler(req, res) {
         }
 
         // Paystack secret key (store in environment variables)
-        const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || 'sk_live_your_secret_key_here';
+        const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || 'sk_test_8332ad5284a52ce15b357f1dd1dc25fab66ecda4';
 
         // Generate unique reference
         const reference = 'STARLINK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
                         }
                     ]
                 },
-                callback_url: 'https://yourdomain.com/payment-callback', // Optional: where to redirect after payment
+                callback_url: 'https://starlink-sa.vercel.app/', // Optional: where to redirect after payment
                 channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer'] // Available payment methods
             })
         });
