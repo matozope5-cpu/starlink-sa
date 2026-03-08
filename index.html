@@ -606,398 +606,417 @@
     <script src="https://js.paystack.co/v1/inline.js"></script>
 
     <script>
-    // Paystack configuration - PUBLIC KEY (safe to expose)
-    const paystackPublicKey = 'pk_test_50f796e5105a79f318cf2e6edbf73da1d7ce8608';
+// Paystack configuration - PUBLIC KEY (safe to expose)
+const paystackPublicKey = 'pk_live_0edbd5c2329710431ece6e53e0e854ea785dc6c2';
+
+// Exchange rate (approximate: 1 USD = 18 ZAR)
+const ZAR_TO_USD_RATE = 18;
+
+// Bundle data with updated price list
+const bundleData = {
+    daily: {
+        id: 'daily',
+        title: 'Daily Bundles',
+        icon: 'fas fa-sun',
+        subtitle: 'Perfect for short-term usage',
+        bundles: [
+            { id: 1, title: '24 Hours - 5GB', subtitle: 'Short-term heavy usage', priceZAR: 10, badge: null },     // $0.56
+            { id: 2, title: '24 Hours - 10GB', subtitle: 'Double data intensive', priceZAR: 16, badge: 'HOT' }     // $0.89
+        ]
+    },
+    weekly: {
+        id: 'weekly',
+        title: 'Weekly Bundles',
+        icon: 'fas fa-calendar-week',
+        subtitle: 'Ideal for weekly browsing',
+        bundles: [
+            { id: 3, title: '3 Days - 8GB', subtitle: 'Weekend browsing', priceZAR: 21, badge: 'VALUE' },          // $1.17
+            { id: 4, title: '7 Days - 12GB', subtitle: 'Full week connectivity', priceZAR: 24, badge: null },      // $1.33
+            { id: 5, title: '7 Days - 20GB', subtitle: 'High data streaming', priceZAR: 33, badge: null },         // $1.83
+            { id: 6, title: '14 Days - 15GB', subtitle: 'Two-week balanced', priceZAR: 30, badge: null }           // $1.67
+        ]
+    },
+    monthly: {
+        id: 'monthly',
+        title: 'Monthly Bundles',
+        icon: 'fas fa-calendar-alt',
+        subtitle: 'Best value for regular users',
+        bundles: [
+            { id: 7, title: '21 Days - 18GB', subtitle: 'Three-week package', priceZAR: 30, badge: null },         // $1.67
+            { id: 8, title: '30 Days - 25GB', subtitle: 'Best seller', priceZAR: 39, badge: 'POPULAR' },           // $2.17
+            { id: 9, title: '30 Days - 50GB', subtitle: 'Double data monthly', priceZAR: 59, badge: null },        // $3.28
+            { id: 10, title: '30 Days - 100GB', subtitle: 'Heavy user', priceZAR: 99, badge: 'HOT' }               // $5.50
+        ]
+    },
+    unlimited: {
+        id: 'unlimited',
+        title: 'Unlimited Bundles',
+        icon: 'fas fa-infinity',
+        subtitle: 'Truly unlimited',
+        bundles: [
+            { id: 11, title: '3 Days - Unlimited', subtitle: 'Short unlimited', priceZAR: 20, badge: null },       // $1.11
+            { id: 12, title: '7 Days - Unlimited', subtitle: 'Week unlimited', priceZAR: 30, badge: null },        // $1.67
+            { id: 14, title: '14 Days - Unlimited', subtitle: 'Two weeks unlimited', priceZAR: 43, badge: 'VALUE' }, // $2.39
+            { id: 13, title: '30 Days - Unlimited', subtitle: 'Full month', priceZAR: 53, badge: 'POPULAR' }       // $2.94
+        ]
+    }
+};
+
+// Helper function to convert ZAR to USD with 2 decimal places (cents)
+function convertZARtoUSD(zarAmount) {
+    return (zarAmount / ZAR_TO_USD_RATE).toFixed(2);
+}
+
+// State management
+let selectedBundle = null;
+let isProcessing = false;
+
+const tabs = document.querySelectorAll('.tab-pill');
+const bundlesContainer = document.getElementById('bundles-container');
+const loadingOverlay = document.getElementById('loadingOverlay');
+
+function showLoading(message = "Processing...") {
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.querySelector('.loading-text').textContent = message;
+    overlay.classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+function initPage() {
+    renderAllBundles();
+    setupEventListeners();
+    document.querySelector('[data-category="all"]').classList.add('active');
+}
+
+function renderAllBundles() {
+    bundlesContainer.innerHTML = '';
     
-    // Exchange rate (approximate: 1 USD = 18 ZAR)
-    const ZAR_TO_USD_RATE = 18;
-
-    // Bundle data
-    const bundleData = {
-        daily: {
-            id: 'daily',
-            title: 'Daily Bundles',
-            icon: 'fas fa-sun',
-            subtitle: 'Perfect for short-term usage',
-            bundles: [
-                { id: 1, title: '24 Hours - 5GB', subtitle: 'Short-term heavy usage', priceZAR: 75, badge: null },
-                { id: 2, title: '24 Hours - 10GB', subtitle: 'Double data intensive', priceZAR: 129, badge: 'HOT' }
-            ]
-        },
-        weekly: {
-            id: 'weekly',
-            title: 'Weekly Bundles',
-            icon: 'fas fa-calendar-week',
-            subtitle: 'Ideal for weekly browsing',
-            bundles: [
-                { id: 3, title: '3 Days - 8GB', subtitle: 'Weekend browsing', priceZAR: 165, badge: 'VALUE' },
-                { id: 4, title: '7 Days - 12GB', subtitle: 'Full week connectivity', priceZAR: 195, badge: null },
-                { id: 5, title: '7 Days - 20GB', subtitle: 'High data streaming', priceZAR: 270, badge: null },
-                { id: 6, title: '14 Days - 15GB', subtitle: 'Two-week balanced', priceZAR: 225, badge: null }
-            ]
-        },
-        monthly: {
-            id: 'monthly',
-            title: 'Monthly Bundles',
-            icon: 'fas fa-calendar-alt',
-            subtitle: 'Best value for regular users',
-            bundles: [
-                { id: 7, title: '21 Days - 18GB', subtitle: 'Three-week package', priceZAR: 245, badge: null },
-                { id: 8, title: '30 Days - 25GB', subtitle: 'Best seller', priceZAR: 325, badge: 'POPULAR' },
-                { id: 9, title: '30 Days - 50GB', subtitle: 'Double data monthly', priceZAR: 489, badge: null },
-                { id: 10, title: '30 Days - 100GB', subtitle: 'Heavy user', priceZAR: 749, badge: 'HOT' }
-            ]
-        },
-        unlimited: {
-            id: 'unlimited',
-            title: 'Unlimited Bundles',
-            icon: 'fas fa-infinity',
-            subtitle: 'Truly unlimited',
-            bundles: [
-                { id: 11, title: '3 Days - Unlimited', subtitle: 'Short unlimited', priceZAR: 140, badge: null },
-                { id: 12, title: '7 Days - Unlimited', subtitle: 'Week unlimited', priceZAR: 239, badge: null },
-                { id: 14, title: '14 Days - Unlimited', subtitle: 'Two weeks unlimited', priceZAR: 349, badge: 'VALUE' },
-                { id: 13, title: '30 Days - Unlimited', subtitle: 'Full month', priceZAR: 435, badge: 'POPULAR' }
-            ]
-        }
-    };
-
-    // Helper function to convert ZAR to USD
-    function convertZARtoUSD(zarAmount) {
-        return Math.ceil(zarAmount / ZAR_TO_USD_RATE);
-    }
-
-    // State management
-    let selectedBundle = null;
-    let isProcessing = false;
-
-    const tabs = document.querySelectorAll('.tab-pill');
-    const bundlesContainer = document.getElementById('bundles-container');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-
-    function showLoading(message = "Processing...") {
-        const overlay = document.getElementById('loadingOverlay');
-        overlay.querySelector('.loading-text').textContent = message;
-        overlay.classList.add('active');
-    }
-
-    function hideLoading() {
-        document.getElementById('loadingOverlay').classList.remove('active');
-    }
-
-    function initPage() {
-        renderAllBundles();
-        setupEventListeners();
-        document.querySelector('[data-category="all"]').classList.add('active');
-    }
-
-    function renderAllBundles() {
-        bundlesContainer.innerHTML = '';
+    for (const [categoryKey, category] of Object.entries(bundleData)) {
+        const categorySection = document.createElement('div');
+        categorySection.className = 'category-section';
+        categorySection.id = `section-${categoryKey}`;
+        categorySection.dataset.category = categoryKey;
         
-        for (const [categoryKey, category] of Object.entries(bundleData)) {
-            const categorySection = document.createElement('div');
-            categorySection.className = 'category-section';
-            categorySection.id = `section-${categoryKey}`;
-            categorySection.dataset.category = categoryKey;
+        const categoryHeader = document.createElement('div');
+        categoryHeader.className = 'category-header';
+        categoryHeader.innerHTML = `
+            <div class="category-title">
+                <i class="${category.icon}"></i>
+                ${category.title}
+            </div>
+            <div class="category-subtitle">${category.subtitle}</div>
+        `;
+        
+        const categoryBundles = document.createElement('div');
+        categoryBundles.className = 'category-bundles';
+        
+        category.bundles.forEach(bundle => {
+            const bundleCard = document.createElement('div');
+            bundleCard.className = 'bundle-card';
+            if (bundle.badge === 'POPULAR') bundleCard.classList.add('popular');
+            if (bundle.badge === 'VALUE') bundleCard.classList.add('featured');
             
-            const categoryHeader = document.createElement('div');
-            categoryHeader.className = 'category-header';
-            categoryHeader.innerHTML = `
-                <div class="category-title">
-                    <i class="${category.icon}"></i>
-                    ${category.title}
+            let badgeClass = '';
+            if (bundle.badge === 'POPULAR') badgeClass = 'popular-badge';
+            else if (bundle.badge === 'HOT') badgeClass = 'hot-badge';
+            else if (bundle.badge === 'VALUE') badgeClass = 'value-badge';
+            
+            const usdPrice = convertZARtoUSD(bundle.priceZAR);
+            
+            bundleCard.innerHTML = `
+                ${bundle.badge ? `<div class="bundle-badge ${badgeClass}">${bundle.badge}</div>` : ''}
+                <div class="bundle-title">${bundle.title}</div>
+                <div class="bundle-subtitle">${bundle.subtitle}</div>
+                <div class="bundle-details">
+                    <div>
+                        <div class="bundle-price">R ${bundle.priceZAR}</div>
+                        <div class="bundle-currency" style="font-size:0.65rem; color:#2d7a2d;">≈ $${usdPrice} USD</div>
+                    </div>
+                    <button class="bundle-buy-btn" 
+                        data-id="${bundle.id}"
+                        data-title="${bundle.title}"
+                        data-price-zar="${bundle.priceZAR}"
+                        data-price-usd="${bundle.priceZAR / ZAR_TO_USD_RATE}">
+                        BUY
+                    </button>
                 </div>
-                <div class="category-subtitle">${category.subtitle}</div>
             `;
             
-            const categoryBundles = document.createElement('div');
-            categoryBundles.className = 'category-bundles';
-            
-            category.bundles.forEach(bundle => {
-                const bundleCard = document.createElement('div');
-                bundleCard.className = 'bundle-card';
-                if (bundle.badge === 'POPULAR') bundleCard.classList.add('popular');
-                if (bundle.badge === 'VALUE') bundleCard.classList.add('featured');
-                
-                let badgeClass = '';
-                if (bundle.badge === 'POPULAR') badgeClass = 'popular-badge';
-                else if (bundle.badge === 'HOT') badgeClass = 'hot-badge';
-                else if (bundle.badge === 'VALUE') badgeClass = 'value-badge';
-                
-                const usdPrice = convertZARtoUSD(bundle.priceZAR);
-                
-                bundleCard.innerHTML = `
-                    ${bundle.badge ? `<div class="bundle-badge ${badgeClass}">${bundle.badge}</div>` : ''}
-                    <div class="bundle-title">${bundle.title}</div>
-                    <div class="bundle-subtitle">${bundle.subtitle}</div>
-                    <div class="bundle-details">
-                        <div>
-                            <div class="bundle-price">R ${bundle.priceZAR} <span style="font-size:0.7rem; color:#2d7a2d;">(~$${usdPrice})</span></div>
-                            <div class="bundle-currency">South African Rand</div>
-                        </div>
-                        <button class="bundle-buy-btn" 
-                            data-id="${bundle.id}"
-                            data-title="${bundle.title}"
-                            data-price-zar="${bundle.priceZAR}"
-                            data-price-usd="${usdPrice}">
-                            BUY
-                        </button>
-                    </div>
-                `;
-                
-                categoryBundles.appendChild(bundleCard);
-            });
-            
-            categorySection.appendChild(categoryHeader);
-            categorySection.appendChild(categoryBundles);
-            bundlesContainer.appendChild(categorySection);
-        }
-    }
-
-    function setupEventListeners() {
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                
-                const category = tab.dataset.category;
-                
-                if (category === 'all') {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                } else {
-                    const section = document.getElementById(`section-${category}`);
-                    if (section) {
-                        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                }
-            });
+            categoryBundles.appendChild(bundleCard);
         });
         
-        bundlesContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('bundle-buy-btn')) {
-                const bundleId = e.target.dataset.id;
-                const bundleTitle = e.target.dataset.title;
-                const priceZAR = e.target.dataset.priceZar;
-                const priceUSD = e.target.dataset.priceUsd;
-                
-                selectBundle({
-                    id: bundleId,
-                    title: bundleTitle,
-                    priceZAR: parseInt(priceZAR),
-                    priceUSD: parseInt(priceUSD)
-                });
+        categorySection.appendChild(categoryHeader);
+        categorySection.appendChild(categoryBundles);
+        bundlesContainer.appendChild(categorySection);
+    }
+}
+
+function setupEventListeners() {
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            const category = tab.dataset.category;
+            
+            if (category === 'all') {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                const section = document.getElementById(`section-${category}`);
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             }
         });
-    }
+    });
+    
+    bundlesContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('bundle-buy-btn')) {
+            const bundleId = e.target.dataset.id;
+            const bundleTitle = e.target.dataset.title;
+            const priceZAR = e.target.dataset.priceZar;
+            const priceUSD = e.target.dataset.priceUsd;
+            
+            selectBundle({
+                id: bundleId,
+                title: bundleTitle,
+                priceZAR: parseInt(priceZAR),
+                priceUSD: parseFloat(priceUSD)
+            });
+        }
+    });
+}
 
-    function validatePhoneNumber(phone) {
-        let cleanPhone = phone.replace(/\D/g, '');
-        
-        if (cleanPhone.startsWith('27')) {
-            cleanPhone = cleanPhone.substring(2);
-        }
-        
-        if (cleanPhone.startsWith('0')) {
-            cleanPhone = cleanPhone.substring(1);
-        }
-        
-        if (cleanPhone.length !== 9) {
-            throw new Error('Please enter a valid 9-digit SA number (e.g., 0821234567 or 821234567)');
-        }
-        
-        const firstDigit = cleanPhone.charAt(0);
-        if (!['6', '7', '8'].includes(firstDigit)) {
-            throw new Error('SA mobile numbers must start with 6, 7, or 8');
-        }
-        
-        return cleanPhone;
+function validatePhoneNumber(phone) {
+    let cleanPhone = phone.replace(/\D/g, '');
+    
+    if (cleanPhone.startsWith('27')) {
+        cleanPhone = cleanPhone.substring(2);
     }
-
-    function isValidEmail(email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
+    
+    if (cleanPhone.startsWith('0')) {
+        cleanPhone = cleanPhone.substring(1);
     }
+    
+    if (cleanPhone.length !== 9) {
+        throw new Error('Please enter a valid 9-digit SA number (e.g., 0821234567 or 821234567)');
+    }
+    
+    const firstDigit = cleanPhone.charAt(0);
+    if (!['6', '7', '8'].includes(firstDigit)) {
+        throw new Error('SA mobile numbers must start with 6, 7, or 8');
+    }
+    
+    return cleanPhone;
+}
 
-    function showInputModal(bundle) {
-        Swal.fire({
-            title: 'Send Data Bundle',
-            html: `
-                <div class="modal-content">
-                    <div class="modal-bundle-name">${bundle.title}</div>
-                    <div class="input-wrapper">
-                        <label class="input-label"><i class="fas fa-mobile-alt"></i> Recipient Phone Number (SA)</label>
-                        <div class="phone-input-group">
-                            <div class="phone-prefix">+27</div>
-                            <input type="tel" class="phone-input" id="swal-phone" placeholder="e.g., 0821234567 or 821234567" maxlength="15">
-                        </div>
-                        <p class="input-note">You can include or omit the leading 0</p>
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function showInputModal(bundle) {
+    const usdAmount = (bundle.priceZAR / ZAR_TO_USD_RATE).toFixed(2);
+    
+    Swal.fire({
+        title: 'Send Data Bundle',
+        html: `
+            <div class="modal-content">
+                <div class="modal-bundle-name">${bundle.title}</div>
+                <div class="input-wrapper">
+                    <label class="input-label"><i class="fas fa-mobile-alt"></i> Recipient Phone Number (SA)</label>
+                    <div class="phone-input-group">
+                        <div class="phone-prefix">+27</div>
+                        <input type="tel" class="phone-input" id="swal-phone" placeholder="e.g., 0821234567 or 821234567" maxlength="15">
                     </div>
-                    
-                    <div class="input-wrapper">
-                        <label class="input-label"><i class="fas fa-envelope"></i> Email Address</label>
-                        <input type="email" class="phone-input" id="swal-email" placeholder="your@email.com" style="border:1.5px solid #2d7a2d; border-radius:12px;">
-                        <p class="input-note">For payment receipt</p>
-                    </div>
-                    
-                    <div class="summary-box">
-                        <div class="summary-row"><span>Bundle:</span><span><strong>${bundle.title}</strong></span></div>
-                        <div class="summary-row"><span>Price (ZAR):</span><span><strong>R ${bundle.priceZAR}</strong></span></div>
-                        <div class="summary-row total"><span>Total (USD):</span><span><strong>$${bundle.priceUSD}</strong></span></div>
-                    </div>
-                    
-                    <div class="secure-note"><i class="fas fa-lock"></i> You will be charged in USD ($${bundle.priceUSD})</div>
+                    <p class="input-note">You can include or omit the leading 0</p>
                 </div>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'Proceed to Payment',
-            cancelButtonText: 'Back',
-            focusConfirm: false,
-            allowOutsideClick: false,
-            customClass: {
-                popup: 'swal2-popup',
-                confirmButton: 'swal2-confirm',
-                cancelButton: 'swal2-cancel'
-            },
-            preConfirm: () => {
-                const phoneInput = document.getElementById('swal-phone');
-                const emailInput = document.getElementById('swal-email');
                 
-                try {
-                    const rawPhone = phoneInput.value.replace(/\s/g, '');
-                    const phoneValue = validatePhoneNumber(rawPhone);
-                    const emailValue = emailInput.value.trim();
-                    
-                    if (!emailValue) {
-                        Swal.showValidationMessage('Please enter your email');
-                        return false;
-                    }
-                    
-                    if (!isValidEmail(emailValue)) {
-                        Swal.showValidationMessage('Please enter a valid email');
-                        return false;
-                    }
-                    
-                    return { phone: phoneValue, email: emailValue };
-                } catch (error) {
-                    Swal.showValidationMessage(error.message);
+                <div class="input-wrapper">
+                    <label class="input-label"><i class="fas fa-envelope"></i> Email Address</label>
+                    <input type="email" class="phone-input" id="swal-email" placeholder="your@email.com" style="border:1.5px solid #2d7a2d; border-radius:12px;">
+                    <p class="input-note">For payment receipt</p>
+                </div>
+                
+                <div class="summary-box">
+                    <div class="summary-row"><span>Bundle:</span><span><strong>${bundle.title}</strong></span></div>
+                    <div class="summary-row"><span>Price (ZAR):</span><span><strong>R ${bundle.priceZAR}</strong></span></div>
+                    <div class="summary-row total"><span>Total (USD):</span><span><strong>$${usdAmount}</strong></span></div>
+                </div>
+                
+                <div class="secure-note"><i class="fas fa-lock"></i> You will be charged $${usdAmount} USD</div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Proceed to Payment',
+        cancelButtonText: 'Back',
+        focusConfirm: false,
+        allowOutsideClick: false,
+        customClass: {
+            popup: 'swal2-popup',
+            confirmButton: 'swal2-confirm',
+            cancelButton: 'swal2-cancel'
+        },
+        preConfirm: () => {
+            const phoneInput = document.getElementById('swal-phone');
+            const emailInput = document.getElementById('swal-email');
+            
+            try {
+                const rawPhone = phoneInput.value.replace(/\s/g, '');
+                const phoneValue = validatePhoneNumber(rawPhone);
+                const emailValue = emailInput.value.trim();
+                
+                if (!emailValue) {
+                    Swal.showValidationMessage('Please enter your email');
                     return false;
                 }
+                
+                if (!isValidEmail(emailValue)) {
+                    Swal.showValidationMessage('Please enter a valid email');
+                    return false;
+                }
+                
+                return { phone: phoneValue, email: emailValue };
+            } catch (error) {
+                Swal.showValidationMessage(error.message);
+                return false;
             }
-        }).then((result) => {
-            if (result.isConfirmed && result.value) {
-                setTimeout(() => {
-                    initiatePayment(bundle, result.value.phone, result.value.email);
-                }, 100);
+        }
+    }).then((result) => {
+        if (result.isConfirmed && result.value) {
+            setTimeout(() => {
+                initiatePayment(bundle, result.value.phone, result.value.email);
+            }, 100);
+        }
+    });
+
+    setTimeout(() => {
+        const phoneInput = document.getElementById('swal-phone');
+        if (phoneInput) phoneInput.focus();
+    }, 50);
+}
+
+function selectBundle(bundle) {
+    selectedBundle = bundle;
+    showInputModal(bundle);
+}
+
+async function initiatePayment(bundle, recipientPhone, customerEmail) {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    try {
+        showLoading('Preparing payment...');
+        
+        const formattedPhone = recipientPhone;
+        
+        Swal.close();
+        await new Promise(resolve => setTimeout(resolve, 300));
+        hideLoading();
+        
+        const reference = 'STARLINK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+        
+        // Calculate USD amount with cents
+        const usdAmount = bundle.priceZAR / ZAR_TO_USD_RATE;
+        
+        // Paystack expects amount in cents (multiply by 100)
+        const amountInCents = Math.round(usdAmount * 100);
+        
+        // Prevent duplicate processing
+        if (sessionStorage.getItem('paymentProcessed') === 'true') {
+            isProcessing = false;
+            return;
+        }
+        
+        const handler = PaystackPop.setup({
+            key: paystackPublicKey,
+            email: customerEmail,
+            amount: amountInCents,
+            currency: 'USD',
+            ref: reference,
+            metadata: {
+                bundle_name: bundle.title,
+                recipient_phone: formattedPhone,
+                amount_zar: bundle.priceZAR,
+                amount_usd: usdAmount.toFixed(2),
+                customer_email: customerEmail
+            },
+            callback: function(response) {
+                // Mark as processed
+                sessionStorage.setItem('paymentProcessed', 'true');
+                setTimeout(() => sessionStorage.removeItem('paymentProcessed'), 5000);
+                
+                // Show success message
+                Swal.fire({
+                    title: 'Payment Successful!',
+                    html: `
+                        <div class="status-modal-content">
+                            <div class="status-icon" style="color:#1d541d;">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="status-details">
+                                <div style="margin-bottom:0.3rem;"><strong>${bundle.title}</strong></div>
+                                <div>Recipient: ${formattedPhone}</div>
+                                <div style="font-weight:700;margin-top:0.3rem;">
+                                    R ${bundle.priceZAR} ($${usdAmount.toFixed(2)} USD)
+                                </div>
+                                <div style="font-size:0.6rem;margin-top:0.3rem;color:#2d7a2d;">
+                                    Ref: ${response.reference}
+                                </div>
+                            </div>
+                            <p style="font-size:0.75rem;">Data will be sent to ${formattedPhone} shortly</p>
+                        </div>
+                    `,
+                    confirmButtonText: 'Done',
+                    confirmButtonColor: '#1d541d',
+                    customClass: {
+                        confirmButton: 'swal2-confirm'
+                    }
+                });
+                
+                isProcessing = false;
+                selectedBundle = null;
+            },
+            onClose: function() {
+                Swal.fire({
+                    title: 'Payment Cancelled',
+                    html: '<p>You closed the payment window</p>',
+                    icon: 'warning',
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#1d541d',
+                    customClass: {
+                        confirmButton: 'swal2-confirm'
+                    }
+                });
+                isProcessing = false;
+                selectedBundle = null;
             }
         });
-
-        setTimeout(() => {
-            const phoneInput = document.getElementById('swal-phone');
-            if (phoneInput) phoneInput.focus();
-        }, 50);
-    }
-
-    function selectBundle(bundle) {
-        selectedBundle = bundle;
-        showInputModal(bundle);
-    }
-
-    async function initiatePayment(bundle, recipientPhone, customerEmail) {
-        if (isProcessing) return;
-        isProcessing = true;
         
-        try {
-            showLoading('Preparing payment...');
-            
-            const formattedPhone = recipientPhone;
-            
-            Swal.close();
-            await new Promise(resolve => setTimeout(resolve, 300));
-            hideLoading();
-            
-            const reference = 'STARLINK-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
-            
-            // THE FIX: Track processed payments to prevent duplicates
-            if (sessionStorage.getItem('paymentProcessed') === 'true') {
-                isProcessing = false;
-                return;
+        handler.openIframe();
+        
+    } catch (error) {
+        hideLoading();
+        Swal.fire({
+            title: 'Error',
+            html: `<p>${error.message || 'Something went wrong'}</p>`,
+            icon: 'error',
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#1d541d',
+            customClass: {
+                confirmButton: 'swal2-confirm'
             }
-            
-            const handler = PaystackPop.setup({
-                key: paystackPublicKey,
-                email: customerEmail,
-                amount: bundle.priceUSD * 100,
-                currency: 'USD',
-                ref: reference,
-                metadata: {
-                    bundle_name: bundle.title,
-                    recipient_phone: formattedPhone,
-                    amount_zar: bundle.priceZAR,
-                    customer_email: customerEmail
-                },
-                callback: function(response) {
-                    // Mark as processed immediately
-                    sessionStorage.setItem('paymentProcessed', 'true');
-                    
-                    // Clear after 5 seconds to allow new purchases
-                    setTimeout(() => sessionStorage.removeItem('paymentProcessed'), 5000);
-                    
-                    // Show success message
-                    Swal.fire({
-                        title: 'Payment Successful!',
-                        html: `
-                            <div class="status-modal-content">
-                                <div class="status-icon" style="color:#1d541d;">
-                                    <i class="fas fa-check-circle"></i>
-                                </div>
-                                <div class="status-details">
-                                    <div style="margin-bottom:0.3rem;"><strong>${bundle.title}</strong></div>
-                                    <div>Recipient: ${formattedPhone}</div>
-                                    <div style="font-weight:700;margin-top:0.3rem;">R ${bundle.priceZAR} ($${bundle.priceUSD})</div>
-                                    <div style="font-size:0.6rem;margin-top:0.3rem;color:#2d7a2d;">
-                                        Ref: ${response.reference}
-                                    </div>
-                                </div>
-                                <p style="font-size:0.75rem;">Data will be sent to ${formattedPhone} shortly</p>
-                            </div>
-                        `,
-                        confirmButtonText: 'Done',
-                        confirmButtonColor: '#1d541d'
-                    });
-                    
-                    isProcessing = false;
-                    selectedBundle = null;
-                },
-                onClose: function() {
-                    Swal.fire({
-                        title: 'Payment Cancelled',
-                        html: '<p>You closed the payment window</p>',
-                        icon: 'warning',
-                        confirmButtonText: 'OK',
-                        confirmButtonColor: '#1d541d'
-                    });
-                    isProcessing = false;
-                    selectedBundle = null;
-                }
-            });
-            
-            handler.openIframe();
-            
-        } catch (error) {
-            hideLoading();
-            Swal.fire({
-                title: 'Error',
-                html: `<p>${error.message || 'Something went wrong'}</p>`,
-                icon: 'error',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#1d541d'
-            });
-            isProcessing = false;
-            selectedBundle = null;
-        }
+        });
+        isProcessing = false;
+        selectedBundle = null;
     }
+}
 
-    document.addEventListener('DOMContentLoaded', initPage);
-    </script>
+// Initialize
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
 </body>
 </html>
